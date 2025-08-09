@@ -1,0 +1,117 @@
+"""Orchestrator agent for planning research strategies."""
+
+from pathlib import Path
+from typing import Dict, Any, List
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import JsonOutputParser
+from langchain_core.runnables import RunnablePassthrough
+from app.core.llm import chat_model
+from app.core.state import PipelineState, update_state
+import json
+
+
+class OrchestratorChain:
+    """Plans research strategies based on user questions."""
+    
+    def __init__(self):
+        """Initialize the orchestrator chain."""
+        # Load prompt from file
+        prompt_path = Path("prompts/orchestrator.claude")
+        if prompt_path.exists():
+            self.system_prompt = prompt_path.read_text()
+        else:
+            self.system_prompt = self._get_default_prompt()
+        
+        # Create prompt template
+        self.prompt = ChatPromptTemplate.from_messages([
+            ("system", self.system_prompt),
+            ("human", "Question: {question}\nContext: {context}")
+        ])
+        
+        # Create output parser
+        self.output_parser = JsonOutputParser()
+        
+        # Create the chain
+        self.chain = (
+            self.prompt
+            | chat_model()
+            | self.output_parser
+        )
+    
+    def _get_default_prompt(self) -> str:
+        """Get default prompt if file not found."""
+        return """You are the Orchestrator, a planning agent. Given a user question, output a minimal, actionable research plan.
+
+OBJECTIVES
+- Pick the right tools: WebSearch (fresh info), Retriever (KB), Firecrawl (extraction)
+- Break work into 2-5 steps max
+- Note what evidence would falsify early assumptions
+- Prefer high-quality, citable sources
+
+OUTPUT SCHEMA (JSON)
+{
+  "plan": "Clear research strategy",
+  "tool_sequence": ["web_search" | "retriever" | "firecrawl"],
+  "key_terms": ["term1", "term2"],
+  "search_strategy": "Explanation of approach",
+  "validation_criteria": "What would confirm/refute findings"
+}
+
+RULES
+- Don't fabricate sources or dates
+- If unanswerable, say so in the plan
+- Keep plan under 200 words"""
+    
+    def plan(self, state: PipelineState) -> PipelineState:
+        """
+        Generate a research plan for the given question.
+        
+        Args:
+            state: Current pipeline state
+            
+        Returns:
+            Updated state with plan
+        """
+        try:
+            # Extract question and context
+            question = state.get("question", "")
+            context = state.get("context", "")
+            
+            # Generate plan
+            result = self.chain.invoke({
+                "question": question,
+                "context": context or "No additional context provided"
+            })
+            
+            # Update state with plan details
+            updated_state = update_state(
+                state,
+                plan=result.get("plan", ""),
+                tool_sequence=result.get("tool_sequence", ["retriever", "web_search"]),
+                key_terms=result.get("key_terms", []),
+                search_strategy=result.get("search_strategy", "")
+            )
+            
+            # Add validation criteria to state if present
+            if "validation_criteria" in result:
+                updated_state["validation_criteria"] = result["validation_criteria"]
+            
+            return updated_state
+            
+        except Exception as e:
+            # On error, return state with error and default plan
+            return update_state(
+                state,
+                error=f"Orchestrator error: {str(e)}",
+                plan="Default plan: Search knowledge base and web for relevant information",
+                tool_sequence=["retriever", "web_search"],
+                key_terms=[state.get("question", "").split()[:3]]  # First 3 words as default
+            )
+    
+    async def aplan(self, state: PipelineState) -> PipelineState:
+        """Async version of plan."""
+        return self.plan(state)  # For now, just call sync version
+
+
+# Create singleton instance
+orchestrator = OrchestratorChain()
