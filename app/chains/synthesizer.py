@@ -5,6 +5,7 @@ from typing import Dict, Any, List
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
 import re
+from langsmith import traceable
 from app.core.llm import chat_model
 from app.core.state import PipelineState, update_state
 import json
@@ -199,6 +200,7 @@ RULES
         
         return "\n".join(parts)
     
+    @traceable(name="Synthesizer.synthesize") 
     def synthesize(self, state: PipelineState) -> PipelineState:
         """
         Synthesize the final answer.

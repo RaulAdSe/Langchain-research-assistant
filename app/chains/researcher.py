@@ -6,6 +6,7 @@ from datetime import datetime
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
 from langchain.agents import create_structured_chat_agent, AgentExecutor
+from langsmith import traceable
 from app.core.llm import chat_model
 from app.core.state import PipelineState, update_state, Finding, Citation
 from app.tools import AVAILABLE_TOOLS
@@ -209,6 +210,7 @@ RULES
             "next_queries": []
         }
     
+    @traceable(name="Researcher.research")
     def research(self, state: PipelineState) -> PipelineState:
         """
         Execute research based on the plan.

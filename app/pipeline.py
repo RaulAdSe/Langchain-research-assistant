@@ -3,6 +3,7 @@
 import time
 from typing import Dict, Any, Optional
 from datetime import datetime
+from langsmith import traceable
 from app.core.state import PipelineState, init_state, ResearchRequest, ResearchResponse
 from app.chains import orchestrator, researcher, critic, synthesizer
 import traceback
@@ -26,6 +27,7 @@ class ResearchPipeline:
         self.critic = critic
         self.synthesizer = synthesizer
     
+    @traceable(name="ResearchPipeline")
     def run(self, request: ResearchRequest) -> ResearchResponse:
         """
         Run the complete research pipeline.

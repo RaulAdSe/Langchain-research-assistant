@@ -5,6 +5,7 @@ from typing import Dict, Any, List
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.runnables import RunnablePassthrough
+from langsmith import traceable
 from app.core.llm import chat_model
 from app.core.state import PipelineState, update_state
 import json
@@ -62,6 +63,7 @@ RULES
 - If unanswerable, say so in the plan
 - Keep plan under 200 words"""
     
+    @traceable(name="Orchestrator.plan")
     def plan(self, state: PipelineState) -> PipelineState:
         """
         Generate a research plan for the given question.
