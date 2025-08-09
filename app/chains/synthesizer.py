@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Dict, Any, List
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
+import re
 from app.core.llm import chat_model
 from app.core.state import PipelineState, update_state
 import json
@@ -33,15 +34,92 @@ Required Fixes: {required_fixes}
 Produce a comprehensive, well-structured final answer incorporating all feedback.""")
         ])
         
-        # Create output parser
-        self.output_parser = JsonOutputParser()
-        
-        # Create the chain
+        # Create the chain without output parser (we'll handle JSON parsing manually)
         self.chain = (
             self.prompt
             | chat_model()
-            | self.output_parser
         )
+    
+    def _parse_json_output(self, raw_output) -> Dict[str, Any]:
+        """Parse JSON output with robust error handling."""
+        try:
+            # Extract content from AIMessage or string
+            if hasattr(raw_output, 'content'):
+                content = raw_output.content
+            elif hasattr(raw_output, 'text'):
+                content = raw_output.text
+            else:
+                content = str(raw_output)
+            
+            # Handle empty content
+            if not content or content.strip() == "":
+                print("Warning: Empty content received from LLM")
+                raise json.JSONDecodeError("Empty content", "", 0)
+            
+            return json.loads(content)
+        except json.JSONDecodeError as e:
+            print(f"JSON parse error: {e}")
+            print(f"Raw output (first 1000 chars): {content[:1000]}")
+            print(f"Raw output type: {type(raw_output)}")
+            
+            # Try to extract JSON from markdown code blocks
+            json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', content, re.DOTALL)
+            if json_match:
+                try:
+                    return json.loads(json_match.group(1))
+                except json.JSONDecodeError:
+                    pass
+            
+            # Try to find JSON object in the content
+            json_match = re.search(r'\{[^{}]*"final"[^{}]*\}', content, re.DOTALL)
+            if json_match:
+                try:
+                    json_str = json_match.group(0)
+                    # Fix common JSON issues
+                    json_str = self._fix_json_string(json_str)
+                    return json.loads(json_str)
+                except json.JSONDecodeError:
+                    pass
+            
+            # Fallback: create a basic structure from the content
+            return {
+                "final": content,
+                "summary": "Error parsing structured output",
+                "key_points": [],
+                "caveats": [],
+                "citations": [],
+                "confidence": 0.5,
+                "metadata": {"sources_used": 0, "primary_sources": 0, "answer_completeness": "partial"}
+            }
+    
+    def _fix_json_string(self, json_str: str) -> str:
+        """Fix common JSON formatting issues."""
+        # Replace unescaped quotes in string values
+        # This is a simplified fix - in production you'd want more robust parsing
+        lines = json_str.split('\n')
+        fixed_lines = []
+        
+        for line in lines:
+            # If this line contains a field with string value, escape quotes within the value
+            if ':' in line and '"' in line:
+                parts = line.split(':', 1)
+                if len(parts) == 2:
+                    key_part = parts[0]
+                    value_part = parts[1].strip()
+                    
+                    # If value starts and ends with quotes, fix internal quotes
+                    if value_part.startswith('"') and value_part.endswith('"') and len(value_part) > 2:
+                        inner_content = value_part[1:-1]
+                        # Escape any unescaped quotes
+                        inner_content = inner_content.replace('\\"', '###ESCAPED###')
+                        inner_content = inner_content.replace('"', '\\"')
+                        inner_content = inner_content.replace('###ESCAPED###', '\\"')
+                        value_part = f'"{inner_content}"'
+                        line = f"{key_part}: {value_part}"
+            
+            fixed_lines.append(line)
+        
+        return '\n'.join(fixed_lines)
     
     def _get_default_prompt(self) -> str:
         """Get default prompt if file not found."""
@@ -145,13 +223,16 @@ RULES
             fixes_str = json.dumps(required_fixes) if required_fixes else "[]"
             
             # Generate final answer
-            result = self.chain.invoke({
+            raw_output = self.chain.invoke({
                 "question": question,
                 "findings": findings_str,
                 "critique": critique_str,
                 "draft": draft,
                 "required_fixes": fixes_str
             })
+            
+            # Parse the JSON output with robust error handling
+            result = self._parse_json_output(raw_output)
             
             # Format the final answer
             final_answer = self._format_final_answer(result, state)

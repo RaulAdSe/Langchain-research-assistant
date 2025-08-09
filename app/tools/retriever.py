@@ -4,6 +4,7 @@ from typing import Dict, Any, List, Optional
 from pydantic import BaseModel, Field
 from langchain_core.tools import BaseTool
 from langchain_core.documents import Document
+from langsmith import traceable
 from app.rag.store import get_vector_store
 from app.core.state import Citation
 import json
@@ -31,6 +32,7 @@ class RetrieverTool(BaseTool):
     args_schema: type[BaseModel] = RetrieverInput
     return_direct: bool = False
     
+    @traceable
     def _run(self, query: str, top_k: int = 5, filter: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
         Execute retrieval from the knowledge base.

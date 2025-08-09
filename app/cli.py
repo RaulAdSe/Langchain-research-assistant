@@ -23,7 +23,8 @@ def ask(
     context: Optional[str] = typer.Option(None, "--context", "-c", help="Additional context"),
     max_sources: int = typer.Option(5, "--sources", "-s", help="Maximum number of sources"),
     output_format: str = typer.Option("markdown", "--format", "-f", help="Output format: markdown or json"),
-    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show detailed progress")
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show detailed progress"),
+    fast: bool = typer.Option(False, "--fast", help="Fast mode: skip critic review for faster responses")
 ):
     """Ask a research question and get a comprehensive answer."""
     
@@ -46,7 +47,8 @@ def ask(
             response = research(
                 question=question,
                 context=context,
-                max_sources=max_sources
+                max_sources=max_sources,
+                fast_mode=fast
             )
         except Exception as e:
             console.print(f"[red]Error: {e}[/red]")

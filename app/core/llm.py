@@ -47,13 +47,25 @@ def get_chat_model(
             raise ValueError("OPENAI_API_KEY is required for OpenAI provider")
         
         from langchain_openai import ChatOpenAI
-        return ChatOpenAI(
-            model=model,
-            api_key=settings.openai_api_key,
-            temperature=temperature,
-            max_tokens=kwargs.get("max_tokens", 4096),
-            **kwargs
-        )
+        # Handle gpt-5-nano parameter differences
+        if model == "gpt-5-nano":
+            # Remove max_tokens from kwargs and use max_completion_tokens instead
+            kwargs.pop("max_tokens", None)
+            return ChatOpenAI(
+                model=model,
+                api_key=settings.openai_api_key,
+                temperature=temperature,
+                max_completion_tokens=kwargs.get("max_completion_tokens", 4096),
+                **kwargs
+            )
+        else:
+            return ChatOpenAI(
+                model=model,
+                api_key=settings.openai_api_key,
+                temperature=temperature,
+                max_tokens=kwargs.get("max_tokens", 4096),
+                **kwargs
+            )
     
     else:
         raise ValueError(f"Unsupported provider: {provider}")
