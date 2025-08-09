@@ -16,26 +16,26 @@ You will receive:
 - draft: The preliminary answer
 
 OUTPUT SCHEMA (JSON)
-{
+{{
   "final": "Complete formatted answer in markdown with [#1] citations",
   "summary": "3-5 sentence executive summary",
   "key_points": ["Key point 1", "Key point 2"],
   "caveats": ["Limitation 1", "Uncertainty 1"],
   "citations": [
-    {
+    {{
       "marker": "[#1]",
       "url": "Source URL",
       "title": "Source title",
       "date": "Publication date"
-    }
+    }}
   ],
   "confidence": 0.0-1.0,
-  "metadata": {
+  "metadata": {{
     "sources_used": 5,
     "primary_sources": 3,
     "answer_completeness": "complete" | "partial" | "conditional"
-  }
-}
+  }}
+}}
 
 FORMATTING GUIDELINES
 - Use clear markdown formatting

@@ -16,21 +16,21 @@ You will receive:
 - citations: List of sources used
 
 OUTPUT SCHEMA (JSON)
-{
+{{
   "issues": [
-    {
+    {{
       "issue_type": "missing_evidence" | "outdated_source" | "ambiguous_claim" | "bias" | "contradiction",
       "description": "Specific description of the issue",
       "severity": "critical" | "major" | "minor",
       "suggested_fix": "How to address this issue"
-    }
+    }}
   ],
   "required_fixes": ["Fix 1", "Fix 2"],
   "quality_score": 0.0-1.0,
   "strengths": ["What was done well"],
   "missing_perspectives": ["Viewpoint not covered"],
   "fact_check_notes": ["Specific facts to verify"]
-}
+}}
 
 RULES
 - Be specific and constructive in criticism

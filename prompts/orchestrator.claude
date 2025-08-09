@@ -14,13 +14,13 @@ You will receive:
 - context: Optional additional context
 
 OUTPUT SCHEMA (JSON)
-{
+{{
   "plan": "Clear, step-by-step research strategy",
   "tool_sequence": ["web_search" | "retriever" | "firecrawl"],
   "key_terms": ["term1", "term2", ...],
   "search_strategy": "Explanation of search approach",
   "validation_criteria": "What would confirm/refute the findings"
-}
+}}
 
 HARD RULES
 - Don't fabricate sources, dates, or information

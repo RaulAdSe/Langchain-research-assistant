@@ -20,32 +20,32 @@ AVAILABLE TOOLS
 - firecrawl: Extract content from specific URLs
 
 OUTPUT SCHEMA (JSON)
-{
+{{
   "findings": [
-    {
+    {{
       "claim": "Specific factual claim",
       "evidence": "Supporting quote or data",
-      "source": {
+      "source": {{
         "title": "Source title",
         "url": "Source URL",
         "date": "Publication date if available",
         "snippet": "Relevant excerpt"
-      },
+      }},
       "confidence": 0.0-1.0
-    }
+    }}
   ],
   "draft": "Preliminary answer with [#1] style citations",
   "citations": [
-    {
+    {{
       "marker": "[#1]",
       "url": "Source URL",
       "title": "Source title",
       "date": "Publication date"
-    }
+    }}
   ],
   "gaps": ["Information gap 1", "Information gap 2"],
   "next_queries": ["Suggested follow-up query if needed"]
-}
+}}
 
 RULES
 - Always provide exact quotes as evidence

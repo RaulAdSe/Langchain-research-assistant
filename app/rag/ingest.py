@@ -7,7 +7,7 @@ from langchain_core.documents import Document
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import (
     TextLoader,
-    PDFLoader,
+    PyPDFLoader,
     UnstructuredMarkdownLoader,
     UnstructuredHTMLLoader,
     DirectoryLoader
@@ -63,11 +63,12 @@ class DocumentIngester:
         
         try:
             if extension == ".pdf":
-                loader = PDFLoader(str(file_path))
+                loader = PyPDFLoader(str(file_path))
             elif extension == ".md":
-                loader = UnstructuredMarkdownLoader(str(file_path))
+                # Use TextLoader for markdown to avoid NLTK dependency issues
+                loader = TextLoader(str(file_path))
             elif extension == ".html" or extension == ".htm":
-                loader = UnstructuredHTMLLoader(str(file_path))
+                loader = TextLoader(str(file_path))  # Use TextLoader to avoid unstructured issues
             elif extension in [".txt", ".text"]:
                 loader = TextLoader(str(file_path))
             else:
