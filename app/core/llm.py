@@ -8,6 +8,7 @@ from app.core.config import settings, Provider
 def get_chat_model(
     provider: Optional[Provider] = None,
     model: Optional[str] = None,
+    agent_type: Optional[str] = None,
     temperature: float = 0.0,
     **kwargs
 ) -> BaseChatModel:
@@ -17,6 +18,7 @@ def get_chat_model(
     Args:
         provider: The LLM provider to use (defaults to settings.provider)
         model: The model name (defaults to settings.model_name)
+        agent_type: Agent type for model selection (orchestrator, researcher, critic, synthesizer)
         temperature: Model temperature for response generation
         **kwargs: Additional provider-specific parameters
     
@@ -27,7 +29,18 @@ def get_chat_model(
         ValueError: If the provider is not supported or API keys are missing
     """
     provider = provider or settings.provider
-    model = model or settings.model_name
+    
+    # Select agent-specific model if configured
+    if agent_type and not model:
+        agent_models = {
+            "orchestrator": settings.orchestrator_model,
+            "researcher": settings.researcher_model,
+            "critic": settings.critic_model,
+            "synthesizer": settings.synthesizer_model
+        }
+        model = agent_models.get(agent_type) or settings.model_name
+    else:
+        model = model or settings.model_name
     
     if provider == "anthropic":
         if not settings.anthropic_api_key:
@@ -103,6 +116,6 @@ def get_embeddings_model():
 
 
 # Convenience function for quick access
-def chat_model(**kwargs) -> BaseChatModel:
+def chat_model(agent_type: Optional[str] = None, **kwargs) -> BaseChatModel:
     """Convenience function to get the default chat model."""
-    return get_chat_model(**kwargs)
+    return get_chat_model(agent_type=agent_type, **kwargs)

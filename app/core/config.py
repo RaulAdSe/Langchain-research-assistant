@@ -35,6 +35,12 @@ class Settings(BaseSettings):
     openai_api_key: Optional[str] = Field(default=None, env="OPENAI_API_KEY")
     model_name: str = Field(default="claude-3-5-sonnet-20241022", env="MODEL_NAME")
     
+    # Agent-specific models (optional overrides)
+    orchestrator_model: Optional[str] = Field(default=None, env="ORCHESTRATOR_MODEL")
+    researcher_model: Optional[str] = Field(default=None, env="RESEARCHER_MODEL") 
+    critic_model: Optional[str] = Field(default=None, env="CRITIC_MODEL")
+    synthesizer_model: Optional[str] = Field(default=None, env="SYNTHESIZER_MODEL")
+    
     # Embeddings
     embeddings_provider: EmbeddingsProvider = Field(default="openai", env="EMBEDDINGS_PROVIDER")
     embeddings_model: str = Field(default="text-embedding-3-large", env="EMBEDDINGS_MODEL")

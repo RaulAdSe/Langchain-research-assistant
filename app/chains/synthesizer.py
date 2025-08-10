@@ -38,7 +38,7 @@ Produce a comprehensive, well-structured final answer incorporating all feedback
         # Create the chain without output parser (we'll handle JSON parsing manually)
         self.chain = (
             self.prompt
-            | chat_model()
+            | chat_model(agent_type="synthesizer")
         )
     
     def _parse_json_output(self, raw_output) -> Dict[str, Any]:
