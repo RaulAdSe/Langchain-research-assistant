@@ -32,10 +32,10 @@ class OrchestratorChain:
         # Create output parser
         self.output_parser = JsonOutputParser()
         
-        # Create the chain
+        # Create the chain with orchestrator-specific model
         self.chain = (
             self.prompt
-            | chat_model()
+            | chat_model(agent_type="orchestrator")
             | self.output_parser
         )
     
@@ -112,7 +112,41 @@ RULES
     
     async def aplan(self, state: PipelineState) -> PipelineState:
         """Async version of plan."""
-        return self.plan(state)  # For now, just call sync version
+        try:
+            # Extract question and context
+            question = state.get("question", "")
+            context = state.get("context", "")
+            
+            # Generate plan using async invoke
+            result = await self.chain.ainvoke({
+                "question": question,
+                "context": context or "No additional context provided"
+            })
+            
+            # Update state with plan details
+            updated_state = update_state(
+                state,
+                plan=result.get("plan", ""),
+                tool_sequence=result.get("tool_sequence", ["retriever", "web_search"]),
+                key_terms=result.get("key_terms", []),
+                search_strategy=result.get("search_strategy", "")
+            )
+            
+            # Add validation criteria to state if present
+            if "validation_criteria" in result:
+                updated_state["validation_criteria"] = result["validation_criteria"]
+            
+            return updated_state
+            
+        except Exception as e:
+            # On error, return state with error and default plan
+            return update_state(
+                state,
+                error=f"Orchestrator error: {str(e)}",
+                plan="Default plan: Search knowledge base and web for relevant information",
+                tool_sequence=["retriever", "web_search"],
+                key_terms=[state.get("question", "").split()[:3]]  # First 3 words as default
+            )
 
 
 # Create singleton instance
