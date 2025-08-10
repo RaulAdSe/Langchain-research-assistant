@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Simple wrapper for the research CLI
+
+# Get the script directory and go to project root
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+PROJECT_ROOT="$( cd "$DIR/.." && pwd )"
+
+# Activate virtual environment and run research
+source "$PROJECT_ROOT/venv/bin/activate" 2>/dev/null
+cd "$PROJECT_ROOT"
+python "bin/research.py" ask "$@"
