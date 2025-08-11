@@ -195,7 +195,7 @@ class StreamingResearchPipeline:
                 }
                 
                 async for chunk in self._stream_agent(
-                    self.critic.review,
+                    self.critic.critique,
                     state,
                     config,
                     "Critic"
@@ -203,7 +203,7 @@ class StreamingResearchPipeline:
                     yield chunk
                 
                 # For critic, use sync version
-                state = self.critic.review(state)
+                state = self.critic.critique(state)
                 
                 yield {
                     "type": "phase_complete",
