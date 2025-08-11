@@ -101,7 +101,7 @@ async def run_research(
                         
                 elif phase == "critic":
                     score = event.get("quality_score", 0)
-                    console.print(f"  [green]✓[/green] Quality score: {score:.1f}/10")
+                    console.print(f"  [green]✓[/green] Quality score: {score:.2f}/1.0")
                     if verbose:
                         state_output = event.get("state_output", {})
                         if state_output:

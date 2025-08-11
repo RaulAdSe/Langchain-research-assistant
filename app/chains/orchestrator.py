@@ -26,7 +26,11 @@ class OrchestratorChain:
         # Create prompt template
         self.prompt = ChatPromptTemplate.from_messages([
             ("system", self.system_prompt),
-            ("human", "Question: {question}\nContext: {context}")
+            ("human", """Question: {question}
+Context: {context}
+Critic Feedback: {critic_feedback}
+
+Create an improved research plan based on the feedback above.""")
         ])
         
         # Create output parser
@@ -75,28 +79,32 @@ RULES
             Updated state with plan
         """
         try:
-            # Extract question and context
+            # Extract question, context, and critic feedback
             question = state.get("question", "")
             context = state.get("context", "")
+            critic_feedback = state.get("critic_feedback", "No previous feedback - initial iteration")
             
             # Generate plan
             result = self.chain.invoke({
                 "question": question,
-                "context": context or "No additional context provided"
+                "context": context or "No additional context provided",
+                "critic_feedback": critic_feedback
             })
             
-            # Update state with plan details
+            # Update state with orchestrator decision
             updated_state = update_state(
                 state,
                 plan=result.get("plan", ""),
+                next_action=result.get("next_action", "research"),
+                orchestrator_reasoning=result.get("reasoning", ""),
                 tool_sequence=result.get("tool_sequence", ["retriever", "web_search"]),
                 key_terms=result.get("key_terms", []),
                 search_strategy=result.get("search_strategy", "")
             )
             
-            # Add validation criteria to state if present
-            if "validation_criteria" in result:
-                updated_state["validation_criteria"] = result["validation_criteria"]
+            # Add synthesis instructions if provided
+            if "synthesis_instructions" in result:
+                updated_state["synthesis_instructions"] = result["synthesis_instructions"]
             
             return updated_state
             

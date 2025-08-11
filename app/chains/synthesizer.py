@@ -64,12 +64,24 @@ Produce a comprehensive, well-structured final answer incorporating all feedback
             print(f"Raw output type: {type(raw_output)}")
             
             # Try to extract JSON from markdown code blocks
-            json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', content, re.DOTALL)
+            json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', content, re.DOTALL | re.MULTILINE)
             if json_match:
                 try:
-                    return json.loads(json_match.group(1))
-                except json.JSONDecodeError:
-                    pass
+                    json_content = json_match.group(1).strip()
+                    return json.loads(json_content)
+                except json.JSONDecodeError as e2:
+                    print(f"Failed to parse extracted JSON: {e2}")
+                    print(f"Extracted content: {json_match.group(1)[:200]}...")
+            
+            # Try to find JSON between first { and last }
+            start_idx = content.find('{')
+            end_idx = content.rfind('}')
+            if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+                try:
+                    json_content = content[start_idx:end_idx+1]
+                    return json.loads(json_content)
+                except json.JSONDecodeError as e3:
+                    print(f"Failed to parse extracted bracket JSON: {e3}")
             
             # Try to find JSON object in the content
             json_match = re.search(r'\{[^{}]*"final"[^{}]*\}', content, re.DOTALL)
@@ -184,8 +196,12 @@ RULES
                 parts.append(f"- {caveat}")
             parts.append("")
         
-        # Add sources
-        if "citations" in result and result["citations"]:
+        # Add sources (only if not already present in final text)
+        final_text = result.get("final", "")
+        # Check if sources are already at the end of the final text
+        has_sources_at_end = final_text and ("[#" in final_text[-200:] or "Sources" in final_text[-200:])
+        
+        if "citations" in result and result["citations"] and not has_sources_at_end:
             parts.append("**Sources**")
             
             # Check if we have mock sources and add disclaimer
@@ -208,11 +224,9 @@ RULES
                 date = citation.get("date", "")
                 source_type = citation.get("source_type", "")
                 
-                # Format different source types
+                # Format different source types (without dates)
                 if source_type == "knowledge_base":
                     parts.append(f"{marker} {title} (Local Knowledge Base)")
-                elif date:
-                    parts.append(f"{marker} [{title}]({url}) - {date}")
                 else:
                     parts.append(f"{marker} [{title}]({url})")
         
