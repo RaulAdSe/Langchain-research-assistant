@@ -161,11 +161,14 @@ RULES
                     }
                     findings.append(finding)
                     
+                    # Create better citation for knowledge base documents
+                    filename = ctx.get("filename", "Knowledge Base Document")
                     citation = {
                         "marker": f"[#{citation_counter}]",
-                        "url": ctx.get("source", ""),
-                        "title": ctx.get("filename", "Knowledge Base"),
-                        "date": None
+                        "url": f"local://knowledge_base/{filename}",
+                        "title": f"{filename} (Knowledge Base)",
+                        "date": None,
+                        "source_type": "knowledge_base"
                     }
                     citations.append(citation)
                     citation_counter += 1

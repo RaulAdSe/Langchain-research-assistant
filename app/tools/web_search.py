@@ -7,6 +7,8 @@ from datetime import datetime
 import hashlib
 import requests
 import json
+from bs4 import BeautifulSoup
+import urllib.parse
 from app.core.config import settings
 
 
@@ -71,25 +73,150 @@ class WebSearchTool(BaseTool):
             print(f"SerpAPI error: {e}")
             return self._mock_search(query, top_k)
     
+    def _duckduckgo_search(self, query: str, top_k: int = 5) -> List[Dict[str, Any]]:
+        """Search using DuckDuckGo HTML version (free, no API key needed)."""
+        try:
+            # DuckDuckGo HTML search URL
+            encoded_query = urllib.parse.quote_plus(query)
+            url = f"https://html.duckduckgo.com/html/?q={encoded_query}"
+            
+            # Headers to look like a real browser
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            }
+            
+            # Make request
+            response = requests.get(url, headers=headers, timeout=10)
+            response.raise_for_status()
+            
+            # Parse HTML
+            soup = BeautifulSoup(response.text, 'html.parser')
+            
+            results = []
+            # Find all results (including ads which we'll filter)
+            all_results = soup.find_all('div', class_=['result', 'result__body'])
+            
+            for result_div in all_results:
+                try:
+                    # Skip ads - they have y.js redirects
+                    title_elem = result_div.find('a', class_='result__a')
+                    if not title_elem:
+                        continue
+                        
+                    title = title_elem.get_text(strip=True)
+                    url = title_elem.get('href', '')
+                    
+                    # Skip if it's an ad (DuckDuckGo ads go through y.js)
+                    if 'duckduckgo.com/y.js' in url:
+                        continue
+                    
+                    # Extract snippet
+                    snippet_elem = result_div.find('a', class_='result__snippet')
+                    if not snippet_elem:
+                        # Try alternative snippet location
+                        snippet_elem = result_div.find('span', class_='result__snippet')
+                    snippet = snippet_elem.get_text(strip=True) if snippet_elem else ""
+                    
+                    # Clean up URL if needed
+                    if url.startswith('//'):
+                        url = 'https:' + url
+                    elif url.startswith('/'):
+                        # DuckDuckGo redirect URL - extract actual URL
+                        if 'uddg=' in url:
+                            import re
+                            match = re.search(r'uddg=([^&]+)', url)
+                            if match:
+                                url = urllib.parse.unquote(match.group(1))
+                    
+                    # Skip if URL is still not valid
+                    if not url.startswith('http'):
+                        continue
+                    
+                    results.append({
+                        "title": title,
+                        "url": url,
+                        "snippet": snippet[:200] if snippet else "No description available",
+                        "published_at": None,  # DuckDuckGo doesn't provide dates
+                        "source": "DuckDuckGo"
+                    })
+                    
+                    # Stop when we have enough non-ad results
+                    if len(results) >= top_k:
+                        break
+                    
+                except Exception as e:
+                    continue
+            
+            # If we got results, return them
+            if results:
+                print(f"DuckDuckGo found {len(results)} results for '{query}'")
+                return results
+            
+            # Fallback if parsing fails
+            print(f"DuckDuckGo parsing failed, using fallback")
+            return self._fallback_search(query, top_k)
+            
+        except Exception as e:
+            print(f"DuckDuckGo search error: {e}")
+            # Fallback to basic search
+            return self._fallback_search(query, top_k)
+    
+    def _fallback_search(self, query: str, top_k: int = 5) -> List[Dict[str, Any]]:
+        """Fallback search when DuckDuckGo fails."""
+        terms = query.replace(' ', '+')
+        query_encoded = urllib.parse.quote(query)
+        
+        # Return search engine links as fallback
+        return [
+            {
+                "title": f"{query} - DuckDuckGo Search",
+                "url": f"https://duckduckgo.com/?q={query_encoded}",
+                "snippet": f"Search results for {query} on DuckDuckGo. Click to see current results.",
+                "published_at": None,
+                "source": "DuckDuckGo"
+            },
+            {
+                "title": f"{query} - Google Search", 
+                "url": f"https://www.google.com/search?q={terms}",
+                "snippet": f"Google search results for {query}. Contains the most comprehensive results.",
+                "published_at": None,
+                "source": "Google"
+            },
+            {
+                "title": f"{query} - Wikipedia",
+                "url": f"https://en.wikipedia.org/wiki/Special:Search?search={query_encoded}",
+                "snippet": f"Wikipedia articles related to {query}. Authoritative encyclopedia content.",
+                "published_at": None,
+                "source": "Wikipedia"
+            }
+        ][:top_k]
+
     def _mock_search(self, query: str, top_k: int = 5) -> List[Dict[str, Any]]:
-        """Mock search results for testing without API key."""
+        """Mock search results when no API key is configured.
+        
+        Note: These link to real search engines but are not actual search results.
+        Configure SEARCH_API_KEY in .env for real web search with working links.
+        """
+        terms = query.replace(' ', '+')
+        query_encoded = query.replace(' ', '_')
+        
         mock_results = [
             {
-                "title": f"Understanding {query}: A Comprehensive Guide",
-                "url": f"https://example.com/guide-{hashlib.md5(query.encode()).hexdigest()[:8]}",
-                "snippet": f"This comprehensive guide covers everything you need to know about {query}, including recent developments and best practices...",
+                "title": f"{query} - Wikipedia",
+                "url": f"https://en.wikipedia.org/wiki/{query_encoded}",
+                "snippet": f"Wikipedia article covering {query} with comprehensive background, definitions, and references to authoritative sources.",
                 "published_at": "2024-01-15"
             },
             {
-                "title": f"Latest Updates on {query}",
-                "url": f"https://news.example.com/updates-{hashlib.md5(query.encode()).hexdigest()[:8]}",
-                "snippet": f"Recent developments in {query} have shown significant progress. Experts say that the implications are far-reaching...",
+                "title": f"{query} - Google Scholar Search Results", 
+                "url": f"https://scholar.google.com/scholar?q={terms}",
+                "snippet": f"Academic research papers and scholarly articles related to {query}. Contains peer-reviewed research and technical discussions.",
                 "published_at": "2024-02-20"
             },
             {
-                "title": f"{query}: Research and Analysis",
-                "url": f"https://research.example.com/analysis-{hashlib.md5(query.encode()).hexdigest()[:8]}",
-                "snippet": f"Our research team has conducted an in-depth analysis of {query}. The findings suggest several key trends...",
+                "title": f"{query} - ArXiv Research Papers",
+                "url": f"https://arxiv.org/search/?query={terms}",
+                "snippet": f"Recent research papers and preprints about {query}. Cutting-edge research findings from the academic community.",
                 "published_at": "2024-01-30"
             }
         ]
@@ -159,10 +286,11 @@ class WebSearchTool(BaseTool):
         
         try:
             # Perform search based on configured provider
-            if settings.search_api == "serpapi":
+            if settings.search_api == "serpapi" and settings.search_api_key:
                 results = self._serpapi_search(query, top_k * 2)  # Get extra for filtering
             else:
-                results = self._mock_search(query, top_k * 2)
+                # Use DuckDuckGo for free web search (no API key needed!)
+                results = self._duckduckgo_search(query, top_k * 2)
             
             # Deduplicate
             results = self._deduplicate_results(results)

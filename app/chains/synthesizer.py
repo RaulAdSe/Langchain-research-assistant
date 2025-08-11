@@ -187,13 +187,31 @@ RULES
         # Add sources
         if "citations" in result and result["citations"]:
             parts.append("**Sources**")
+            
+            # Check if we have mock sources and add disclaimer
+            has_mock_sources = any(
+                "wikipedia.org" in citation.get("url", "") or 
+                "scholar.google.com" in citation.get("url", "") or
+                "arxiv.org" in citation.get("url", "") or
+                citation.get("url", "").startswith("local://")
+                for citation in result["citations"]
+            )
+            
+            if has_mock_sources:
+                parts.append("*Note: Some links may be generic search URLs since no web search API is configured.*")
+                parts.append("")
+            
             for citation in result["citations"]:
                 marker = citation.get("marker", "")
                 title = citation.get("title", "Untitled")
                 url = citation.get("url", "")
                 date = citation.get("date", "")
+                source_type = citation.get("source_type", "")
                 
-                if date:
+                # Format different source types
+                if source_type == "knowledge_base":
+                    parts.append(f"{marker} {title} (Local Knowledge Base)")
+                elif date:
                     parts.append(f"{marker} [{title}]({url}) - {date}")
                 else:
                     parts.append(f"{marker} [{title}]({url})")
