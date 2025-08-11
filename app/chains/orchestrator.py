@@ -44,7 +44,7 @@ class OrchestratorChain:
         return """You are the Orchestrator, a planning agent. Given a user question, output a minimal, actionable research plan.
 
 OBJECTIVES
-- Pick the right tools: WebSearch (fresh info), Retriever (KB), Firecrawl (extraction)
+- Pick the right tools: WebSearch (current info via DuckDuckGo), Retriever (local knowledge base)
 - Break work into 2-5 steps max
 - Note what evidence would falsify early assumptions
 - Prefer high-quality, citable sources
@@ -52,7 +52,7 @@ OBJECTIVES
 OUTPUT SCHEMA (JSON)
 {
   "plan": "Clear research strategy",
-  "tool_sequence": ["web_search" | "retriever" | "firecrawl"],
+  "tool_sequence": ["web_search" | "retriever"],
   "key_terms": ["term1", "term2"],
   "search_strategy": "Explanation of approach",
   "validation_criteria": "What would confirm/refute findings"
@@ -101,13 +101,20 @@ RULES
             return updated_state
             
         except Exception as e:
+            # Extract meaningful key terms from the question for better search
+            question = state.get("question", "")
+            # Remove common words and extract meaningful terms
+            stop_words = {"what", "is", "are", "the", "a", "an", "and", "or", "but", "to", "of", "for", "in", "on", "at", "by", "with"}
+            key_terms = [word.lower().strip("?.,!:;") for word in question.split() if word.lower() not in stop_words and len(word) > 2]
+            
             # On error, return state with error and default plan
+            print(f"Orchestrator error: {str(e)}")
             return update_state(
                 state,
                 error=f"Orchestrator error: {str(e)}",
                 plan="Default plan: Search knowledge base and web for relevant information",
                 tool_sequence=["retriever", "web_search"],
-                key_terms=[state.get("question", "").split()[:3]]  # First 3 words as default
+                key_terms=key_terms[:5]  # Take first 5 meaningful terms
             )
     
     async def aplan(self, state: PipelineState) -> PipelineState:
@@ -139,13 +146,20 @@ RULES
             return updated_state
             
         except Exception as e:
+            # Extract meaningful key terms from the question for better search
+            question = state.get("question", "")
+            # Remove common words and extract meaningful terms
+            stop_words = {"what", "is", "are", "the", "a", "an", "and", "or", "but", "to", "of", "for", "in", "on", "at", "by", "with"}
+            key_terms = [word.lower().strip("?.,!:;") for word in question.split() if word.lower() not in stop_words and len(word) > 2]
+            
             # On error, return state with error and default plan
+            print(f"Orchestrator error: {str(e)}")
             return update_state(
                 state,
                 error=f"Orchestrator error: {str(e)}",
                 plan="Default plan: Search knowledge base and web for relevant information",
                 tool_sequence=["retriever", "web_search"],
-                key_terms=[state.get("question", "").split()[:3]]  # First 3 words as default
+                key_terms=key_terms[:5]  # Take first 5 meaningful terms
             )
 
 

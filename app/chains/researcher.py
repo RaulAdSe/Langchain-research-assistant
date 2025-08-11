@@ -11,10 +11,111 @@ from app.core.llm import chat_model
 from app.core.state import PipelineState, update_state, Finding, Citation
 from app.tools import AVAILABLE_TOOLS
 import json
+import re
 
 
 class ResearcherChain:
     """Executes research plans using available tools."""
+    
+    def _normalize_similarity_score(self, chromadb_score: float) -> float:
+        """
+        Normalize ChromaDB similarity score to 0.0-1.0 range.
+        
+        ChromaDB uses different distance metrics (L2, cosine, etc.) where:
+        - Lower scores = more similar for L2 distance
+        - Higher scores = more similar for cosine similarity
+        
+        Args:
+            chromadb_score: Raw similarity score from ChromaDB
+            
+        Returns:
+            Normalized relevance score between 0.0 and 1.0
+        """
+        # ChromaDB typically returns L2 distances where 0 = identical, higher = less similar
+        # Convert to similarity score where 1 = most relevant, 0 = least relevant
+        
+        if chromadb_score < 0:
+            # Negative scores shouldn't happen, but handle gracefully
+            return 0.0
+        elif chromadb_score > 2.0:
+            # Very high L2 distance = very dissimilar
+            return 0.0
+        else:
+            # Convert L2 distance to similarity: closer to 0 = more similar = higher score
+            # Use exponential decay to map distances to [0, 1]
+            import math
+            similarity = math.exp(-chromadb_score)
+            return min(1.0, similarity)
+    
+    def _assess_retriever_relevance(self, question: str, retriever_result: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Assess if retriever results are relevant using ChromaDB's embedding similarity scores.
+        
+        Args:
+            question: The research question
+            retriever_result: Results from retriever tool
+            
+        Returns:
+            Dictionary with relevance assessment and filtered results
+        """
+        if 'error' in retriever_result:
+            return {
+                'relevant': False,
+                'max_similarity': 0.0,
+                'filtered_results': [],
+                'assessment': f'Retriever error: {retriever_result["error"]}'
+            }
+        
+        contexts = retriever_result.get('contexts', [])
+        if not contexts:
+            return {
+                'relevant': False,
+                'max_similarity': 0.0,
+                'filtered_results': [],
+                'assessment': 'No documents found in knowledge base'
+            }
+        
+        # Use ChromaDB's similarity scores directly (already computed with embeddings)
+        scored_contexts = []
+        for context in contexts:
+            chromadb_score = context.get('score', 0.0)
+            # Normalize ChromaDB score to 0-1 relevance score
+            relevance_score = self._normalize_similarity_score(chromadb_score)
+            
+            scored_contexts.append({
+                **context,
+                'relevance_score': relevance_score,
+                'chromadb_score': chromadb_score
+            })
+        
+        # Find max relevance
+        max_similarity = max(ctx['relevance_score'] for ctx in scored_contexts) if scored_contexts else 0.0
+        
+        # Set similarity threshold for relevance (0.4 for embedding similarity)
+        similarity_threshold = 0.4
+        relevant_contexts = [ctx for ctx in scored_contexts if ctx['relevance_score'] >= similarity_threshold]
+        
+        is_relevant = max_similarity >= similarity_threshold
+        
+        # Create detailed assessment
+        best_match = max(scored_contexts, key=lambda x: x['relevance_score']) if scored_contexts else None
+        assessment_parts = [
+            f"Best similarity: {max_similarity:.3f}",
+            f"ChromaDB score: {best_match['chromadb_score']:.3f}" if best_match else "No results",
+            f"Threshold: {similarity_threshold}",
+            "✅ RELEVANT" if is_relevant else "❌ NOT RELEVANT"
+        ]
+        assessment = ", ".join(assessment_parts)
+        
+        return {
+            'relevant': is_relevant,
+            'max_similarity': max_similarity,
+            'filtered_results': relevant_contexts,
+            'assessment': assessment,
+            'total_docs_checked': len(contexts),
+            'relevant_docs_found': len(relevant_contexts),
+            'threshold': similarity_threshold
+        }
     
     def __init__(self):
         """Initialize the researcher chain."""
@@ -101,13 +202,31 @@ RULES
                     start_time = datetime.now()
                     
                     if tool_name == "retriever":
-                        result = tool._run(query=search_query, top_k=5)
+                        # Always query retriever but assess relevance
+                        raw_result = tool._run(query=search_query, top_k=5)
+                        relevance_assessment = self._assess_retriever_relevance(question, raw_result)
+                        
+                        # Log relevance assessment
+                        print(f"📊 Retriever Relevance Assessment: {relevance_assessment['assessment']}")
+                        print(f"   Documents checked: {relevance_assessment['total_docs_checked']}, Relevant: {relevance_assessment['relevant_docs_found']}")
+                        
+                        if relevance_assessment['relevant']:
+                            # Use filtered relevant results
+                            result = {
+                                **raw_result,
+                                'contexts': relevance_assessment['filtered_results'],
+                                'relevance_filtered': True,
+                                'max_similarity': relevance_assessment['max_similarity']
+                            }
+                            print(f"✅ Using {len(relevance_assessment['filtered_results'])} relevant local documents")
+                            print(f"   Best similarity: {relevance_assessment['max_similarity']:.3f}")
+                        else:
+                            # Skip retriever results - not relevant
+                            print(f"❌ Skipping retriever - local knowledge not relevant to: {search_query}")
+                            continue  # Skip this tool
+                            
                     elif tool_name == "web_search":
                         result = tool._run(query=search_query, top_k=5)
-                    elif tool_name == "firecrawl":
-                        # For firecrawl, we'd need URLs from previous searches
-                        # Skip if no URLs available
-                        continue
                     else:
                         result = tool._run(search_query)
                     

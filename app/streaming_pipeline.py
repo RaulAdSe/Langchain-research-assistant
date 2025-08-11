@@ -154,6 +154,11 @@ class StreamingResearchPipeline:
                 "phase": "orchestrator",
                 "plan": state.get("plan", ""),
                 "tools": state.get("tool_sequence", []),
+                "state_output": {
+                    "plan": state.get("plan", "")[:200] + "..." if len(state.get("plan", "")) > 200 else state.get("plan", ""),
+                    "tool_sequence": state.get("tool_sequence", []),
+                    "key_terms": state.get("key_terms", [])
+                },
                 "timestamp": datetime.utcnow().isoformat()
             }
             
@@ -176,12 +181,19 @@ class StreamingResearchPipeline:
             
             # For researcher, use sync version since it doesn't have async yet
             state = self.researcher.research(state)
+                
             
             yield {
                 "type": "phase_complete",
                 "phase": "researcher",
                 "findings_count": len(state.get("findings", [])),
                 "draft_length": len(state.get("draft", "")),
+                "state_output": {
+                    "findings": [f"Finding {i+1}: {finding.get('claim', '')[:100]}..." for i, finding in enumerate(state.get("findings", [])[:3])],
+                    "draft_preview": state.get("draft", "")[:300] + "..." if len(state.get("draft", "")) > 300 else state.get("draft", ""),
+                    "citations_count": len(state.get("citations", [])),
+                    "tools_used": [tool for tool in state.get("tool_sequence", []) if tool in ["web_search", "retriever"]]
+                },
                 "timestamp": datetime.utcnow().isoformat()
             }
             
@@ -204,12 +216,20 @@ class StreamingResearchPipeline:
                 
                 # For critic, use sync version
                 state = self.critic.critique(state)
+                    
                 
                 yield {
                     "type": "phase_complete",
                     "phase": "critic",
-                    "quality_score": state.get("critique", {}).get("score", 0),
+                    "quality_score": state.get("quality_score", 0),
                     "fixes_required": len(state.get("required_fixes", [])),
+                    "state_output": {
+                        "quality_score": state.get("quality_score", 0),
+                        "issues_found": len(state.get("issues", [])),
+                        "critical_issues": len([i for i in state.get("issues", []) if getattr(i, 'severity', 'minor') == 'critical']),
+                        "required_fixes": state.get("required_fixes", [])[:3],  # First 3 fixes
+                        "strengths": state.get("strengths", [])[:2]  # First 2 strengths
+                    },
                     "timestamp": datetime.utcnow().isoformat()
                 }
             else:
@@ -238,12 +258,19 @@ class StreamingResearchPipeline:
             
             # For synthesizer, use sync version  
             state = self.synthesizer.synthesize(state)
+                
             
             yield {
                 "type": "phase_complete",
                 "phase": "synthesizer",
                 "confidence": state.get("confidence", 0),
                 "answer_length": len(state.get("final", "")),
+                "state_output": {
+                    "confidence": state.get("confidence", 0),
+                    "final_preview": state.get("final", "")[:400] + "..." if len(state.get("final", "")) > 400 else state.get("final", ""),
+                    "citations_count": len(state.get("citations", [])),
+                    "sections_count": state.get("final", "").count("##") + state.get("final", "").count("###")
+                },
                 "timestamp": datetime.utcnow().isoformat()
             }
             

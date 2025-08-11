@@ -3,6 +3,7 @@
 from typing import Dict, Any, List, Optional, Set
 from pydantic import BaseModel, Field
 from langchain_core.tools import BaseTool
+from langsmith import traceable
 from datetime import datetime
 import hashlib
 import requests
@@ -40,6 +41,7 @@ class WebSearchTool(BaseTool):
         self._rate_limit_count = 0
         self._max_requests_per_session = 50
     
+    @traceable(name="WebSearch.serpapi_search")
     def _serpapi_search(self, query: str, top_k: int = 5) -> List[Dict[str, Any]]:
         """Search using SerpAPI."""
         if not settings.search_api_key:
@@ -73,6 +75,7 @@ class WebSearchTool(BaseTool):
             print(f"SerpAPI error: {e}")
             return self._mock_search(query, top_k)
     
+    @traceable(name="WebSearch.duckduckgo_search")
     def _duckduckgo_search(self, query: str, top_k: int = 5) -> List[Dict[str, Any]]:
         """Search using DuckDuckGo HTML version (free, no API key needed)."""
         try:
@@ -257,6 +260,7 @@ class WebSearchTool(BaseTool):
         
         return recent_results
     
+    @traceable(name="WebSearch._run")
     def _run(
         self,
         query: str,

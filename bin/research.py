@@ -70,22 +70,65 @@ async def run_research(
                 # Show phase results
                 if phase == "orchestrator":
                     tools = event.get("tools", [])
-                    if tools and verbose:
-                        console.print(f"  [green]✓[/green] Plan ready, will use: {', '.join(tools)}")
+                    console.print(f"  [green]✓[/green] Plan ready, will use: {', '.join(tools)}")
+                    if verbose:
+                        state_output = event.get("state_output", {})
+                        if state_output:
+                            plan = state_output.get('plan', '')
+                            if plan:
+                                console.print(f"    [dim]Plan:[/dim] {plan}")
+                            key_terms = state_output.get('key_terms', [])
+                            if key_terms:
+                                console.print(f"    [dim]Key terms:[/dim] {', '.join(key_terms)}")
                         
                 elif phase == "researcher":
                     findings_count = event.get("findings_count", 0)
+                    console.print(f"  [green]✓[/green] Found {findings_count} findings")
                     if verbose:
-                        console.print(f"  [green]✓[/green] Found {findings_count} findings")
+                        state_output = event.get("state_output", {})
+                        if state_output:
+                            draft_preview = state_output.get('draft_preview', '')
+                            if draft_preview:
+                                console.print(f"    [dim]Draft preview:[/dim] {draft_preview}")
+                            findings = state_output.get('findings', [])
+                            if findings:
+                                console.print(f"    [dim]Key findings:[/dim]")
+                                for finding in findings:
+                                    console.print(f"      • {finding}")
+                            citations_count = state_output.get('citations_count', 0)
+                            if citations_count:
+                                console.print(f"    [dim]Citations found:[/dim] {citations_count}")
                         
                 elif phase == "critic":
                     score = event.get("quality_score", 0)
+                    console.print(f"  [green]✓[/green] Quality score: {score:.1f}/10")
                     if verbose:
-                        console.print(f"  [green]✓[/green] Quality score: {score:.1f}/10")
+                        state_output = event.get("state_output", {})
+                        if state_output:
+                            issues_count = state_output.get('issues_found', 0)
+                            critical_count = state_output.get('critical_issues', 0)
+                            if issues_count:
+                                console.print(f"    [dim]Issues found:[/dim] {issues_count} ({critical_count} critical)")
+                            fixes = state_output.get('required_fixes', [])
+                            if fixes:
+                                console.print(f"    [dim]Required fixes:[/dim] {', '.join(fixes)}")
+                            strengths = state_output.get('strengths', [])
+                            if strengths:
+                                console.print(f"    [dim]Strengths:[/dim] {', '.join(strengths)}")
                         
                 elif phase == "synthesizer":
                     confidence = event.get("confidence", 0)
+                    console.print(f"  [green]✓[/green] Final answer ready ({confidence:.0%} confidence)")
                     progress.update(task, description=f"[green]Finalizing answer...[/green] ({confidence:.0%} confidence)")
+                    if verbose:
+                        state_output = event.get("state_output", {})
+                        if state_output:
+                            final_preview = state_output.get('final_preview', '')
+                            if final_preview:
+                                console.print(f"    [dim]Answer preview:[/dim] {final_preview}")
+                            sections = state_output.get('sections_count', 0)
+                            citations = state_output.get('citations_count', 0)
+                            console.print(f"    [dim]Structure:[/dim] {sections} sections, {citations} citations")
                     
             elif event_type == "phase_skip":
                 phase = event.get("phase")
@@ -97,11 +140,22 @@ async def run_research(
                 tools_used.append(tool)
                 if verbose:
                     progress.update(task, description=f"[blue]Using {tool}...[/blue]")
+                    tool_input = event.get("input", "")
+                    if tool_input:
+                        console.print(f"    [dim]Tool input:[/dim] {tool_input}")
                     
             elif event_type == "agent_thinking":
                 agent = event.get("agent")
+                if verbose:
+                    console.print(f"  [dim]🧠 {agent} processing...[/dim]")
                 progress.update(task, description=f"[dim]{agent} thinking...[/dim]")
                 
+            elif event_type == "tool_end":
+                if verbose:
+                    output_preview = event.get("output_preview", "")
+                    if output_preview:
+                        console.print(f"    [dim]Tool output:[/dim] {output_preview}")
+                        
             elif event_type == "pipeline_complete":
                 final_answer = event.get("final_answer", "")
                 confidence = event.get("confidence", 0)

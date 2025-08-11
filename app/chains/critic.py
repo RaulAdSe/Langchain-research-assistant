@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Dict, Any, List
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
+from langsmith import traceable
 from app.core.llm import chat_model
 from app.core.state import PipelineState, update_state, CritiqueIssue
 import json
@@ -76,6 +77,7 @@ RULES
 - Quality: >0.8 excellent, 0.6-0.8 good, <0.6 needs work
 - Max 5 critical, 10 total issues"""
     
+    @traceable(name="Critic.critique")
     def critique(self, state: PipelineState) -> PipelineState:
         """
         Critique the research findings.
@@ -116,13 +118,28 @@ RULES
                 )
                 issues.append(issue)
             
+            # Calculate quality score if not provided
+            quality_score = result.get("quality_score", None)
+            if quality_score is None or quality_score == 0.0:
+                # Auto-calculate based on issues found
+                critical_issues = sum(1 for i in issues if i.severity == "critical")
+                major_issues = sum(1 for i in issues if i.severity == "major")
+                minor_issues = sum(1 for i in issues if i.severity == "minor")
+                
+                # Start with perfect score and deduct
+                quality_score = 1.0
+                quality_score -= critical_issues * 0.3  # Critical issues heavily impact score
+                quality_score -= major_issues * 0.15    # Major issues moderately impact
+                quality_score -= minor_issues * 0.05    # Minor issues slightly impact
+                quality_score = max(0.1, min(1.0, quality_score))  # Clamp between 0.1 and 1.0
+            
             # Update state with critique
             updated_state = update_state(
                 state,
                 critique=result,
                 issues=issues,
                 required_fixes=result.get("required_fixes", []),
-                quality_score=result.get("quality_score", 0.5)
+                quality_score=quality_score
             )
             
             # Add additional critique metadata if present
