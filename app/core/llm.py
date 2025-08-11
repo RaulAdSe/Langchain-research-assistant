@@ -117,5 +117,7 @@ def get_embeddings_model():
 
 # Convenience function for quick access
 def chat_model(agent_type: Optional[str] = None, **kwargs) -> BaseChatModel:
-    """Convenience function to get the default chat model."""
+    """Convenience function to get the default chat model with low temperature for consistency."""
+    # Set low temperature by default to reduce stochasticity
+    kwargs.setdefault("temperature", 0.1)
     return get_chat_model(agent_type=agent_type, **kwargs)

@@ -142,7 +142,7 @@ class StreamingDisplay:
                 self.phases[phase]["details"] = f"Found {findings} findings"
             elif phase == "critic":
                 score = event.get("quality_score", 0)
-                self.phases[phase]["details"] = f"Quality score: {score:.1f}/10"
+                self.phases[phase]["details"] = f"Quality score: {score:.2f}/1.0"
             elif phase == "synthesizer":
                 conf = event.get("confidence", 0)
                 self.phases[phase]["details"] = f"Confidence: {conf:.0%}"

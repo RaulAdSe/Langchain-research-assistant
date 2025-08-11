@@ -251,11 +251,80 @@ RULES
         
         return {"tool_results": tool_results}
     
-    def _compile_findings(self, tool_results: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Compile findings from tool results."""
+    def _merge_findings_by_quality(
+        self, 
+        existing_findings: List[Dict], existing_citations: List[Dict],
+        new_findings: List[Dict], new_citations: List[Dict]
+    ) -> tuple:
+        """Merge findings with cumulative improvement - replace weak findings with stronger ones."""
+        
+        # Quality scoring function
+        def quality_score(finding):
+            confidence = finding.get("confidence", 0.5)
+            evidence_length = len(finding.get("evidence", ""))
+            has_url = bool(finding.get("source", {}).get("url"))
+            has_date = bool(finding.get("source", {}).get("date"))
+            
+            # Score based on confidence, evidence quality, source quality
+            score = confidence * 0.6 + min(evidence_length / 200, 1.0) * 0.2 + (has_url * 0.1) + (has_date * 0.1)
+            return score
+        
+        # If no existing findings, just use new ones
+        if not existing_findings:
+            return new_findings[:6], new_citations[:6]
+        
+        # Score all existing findings
+        existing_scored = [(finding, quality_score(finding), existing_citations[i] if i < len(existing_citations) else None) 
+                          for i, finding in enumerate(existing_findings)]
+        
+        # Score all new findings
+        new_scored = [(finding, quality_score(finding), new_citations[i] if i < len(new_citations) else None) 
+                     for i, finding in enumerate(new_findings)]
+        
+        # Start with existing findings
+        merged_findings = existing_scored.copy()
+        
+        # Replace lower-quality existing findings with higher-quality new ones
+        for new_finding, new_quality, new_citation in new_scored:
+            # Find the lowest-quality existing finding
+            if merged_findings:
+                lowest_idx = min(range(len(merged_findings)), key=lambda i: merged_findings[i][1])
+                lowest_quality = merged_findings[lowest_idx][1]
+                
+                # Replace if new finding is significantly better
+                if new_quality > lowest_quality + 0.1:  # Require meaningful improvement
+                    merged_findings[lowest_idx] = (new_finding, new_quality, new_citation)
+                    print(f"   🔄 Replaced finding with quality {lowest_quality:.2f} → {new_quality:.2f}")
+                elif len(merged_findings) < 6:  # Add if we have room
+                    merged_findings.append((new_finding, new_quality, new_citation))
+                    print(f"   ➕ Added new finding with quality {new_quality:.2f}")
+        
+        # Sort by quality and take best findings
+        merged_findings.sort(key=lambda x: x[1], reverse=True)
+        best_findings = merged_findings[:6]
+        
+        # Re-number citations
+        final_findings = []
+        final_citations = []
+        
+        for i, (finding, quality, citation) in enumerate(best_findings, 1):
+            final_findings.append(finding)
+            if citation:
+                citation["marker"] = f"[#{i}]"
+                final_citations.append(citation)
+        
+        return final_findings, final_citations
+    
+    def _compile_findings(self, tool_results: List[Dict[str, Any]], existing_findings: List = None, existing_citations: List = None) -> Dict[str, Any]:
+        """Compile findings from tool results, focusing on QUALITY over quantity."""
+        # Start with existing high-quality findings
         findings = []
         citations = []
         citation_counter = 1
+        
+        # First, collect all new findings from tool results
+        new_findings = []
+        new_citations = []
         
         for tool_result in tool_results:
             tool_name = tool_result["tool_name"]
@@ -317,18 +386,26 @@ RULES
                     citations.append(citation)
                     citation_counter += 1
         
+        # QUALITY OVER QUANTITY: Merge with existing findings intelligently
+        if existing_findings and existing_citations:
+            final_findings, final_citations = self._merge_findings_by_quality(
+                existing_findings, existing_citations, findings, citations
+            )
+        else:
+            final_findings, final_citations = findings, citations
+        
         # Create a simple draft
         draft_parts = []
-        for i, finding in enumerate(findings[:5], 1):
+        for i, finding in enumerate(final_findings[:5], 1):
             draft_parts.append(f"{finding['evidence'][:100]}... [{i}]")
         
         draft = " ".join(draft_parts) if draft_parts else "No relevant information found."
         
         return {
-            "findings": findings,
-            "citations": citations,
+            "findings": final_findings,
+            "citations": final_citations,
             "draft": draft,
-            "gaps": ["More specific information needed"] if not findings else [],
+            "gaps": ["More specific information needed"] if not final_findings else [],
             "next_queries": []
         }
     
@@ -348,8 +425,10 @@ RULES
             tool_execution = self._execute_tools(state)
             tool_results = tool_execution.get("tool_results", [])
             
-            # Compile findings from tool results
-            compiled = self._compile_findings(tool_results)
+            # Compile findings from tool results (cumulative - build on existing)
+            existing_findings = state.get("findings", [])
+            existing_citations = state.get("citations", [])
+            compiled = self._compile_findings(tool_results, existing_findings, existing_citations)
             
             # Update state
             updated_state = update_state(
