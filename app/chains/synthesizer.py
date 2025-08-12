@@ -63,36 +63,61 @@ Produce a comprehensive, well-structured final answer incorporating all feedback
             print(f"Raw output (first 1000 chars): {content[:1000]}")
             print(f"Raw output type: {type(raw_output)}")
             
-            # Try to extract JSON from markdown code blocks
-            json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', content, re.DOTALL | re.MULTILINE)
-            if json_match:
-                try:
-                    json_content = json_match.group(1).strip()
-                    return json.loads(json_content)
-                except json.JSONDecodeError as e2:
-                    print(f"Failed to parse extracted JSON: {e2}")
-                    print(f"Extracted content: {json_match.group(1)[:200]}...")
+            # Strategy 1: Extract JSON from markdown code blocks (improved patterns)
+            patterns = [
+                r'```(?:json)?\s*(\{.*?\})\s*```',  # Standard markdown
+                r'```(?:json)?\s*(\{[\s\S]*?\})\s*```',  # With newlines
+                r'```\s*(\{[\s\S]*?\})\s*```',  # Without json label
+                r'`(\{[\s\S]*?\})`',  # Single backticks
+            ]
             
-            # Try to find JSON between first { and last }
+            for pattern in patterns:
+                json_match = re.search(pattern, content, re.DOTALL | re.MULTILINE)
+                if json_match:
+                    try:
+                        json_content = json_match.group(1).strip()
+                        # Try to fix common issues
+                        json_content = self._fix_json_string(json_content)
+                        return json.loads(json_content)
+                    except json.JSONDecodeError as e2:
+                        continue
+            
+            # Strategy 2: Find JSON between first { and last } (improved)
             start_idx = content.find('{')
             end_idx = content.rfind('}')
             if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
                 try:
                     json_content = content[start_idx:end_idx+1]
+                    # Clean up potential formatting issues
+                    json_content = self._fix_json_string(json_content)
                     return json.loads(json_content)
                 except json.JSONDecodeError as e3:
-                    print(f"Failed to parse extracted bracket JSON: {e3}")
-            
-            # Try to find JSON object in the content
-            json_match = re.search(r'\{[^{}]*"final"[^{}]*\}', content, re.DOTALL)
-            if json_match:
-                try:
-                    json_str = json_match.group(0)
-                    # Fix common JSON issues
-                    json_str = self._fix_json_string(json_str)
-                    return json.loads(json_str)
-                except json.JSONDecodeError:
                     pass
+            
+            # Strategy 3: Look for JSON-like structure with specific fields
+            field_patterns = [
+                r'\{[^{}]*?"final"[^{}]*?\}',
+                r'\{[\s\S]*?"final"[\s\S]*?\}',
+                r'\{[\s\S]*?"summary"[\s\S]*?\}',
+            ]
+            
+            for pattern in field_patterns:
+                json_match = re.search(pattern, content, re.DOTALL)
+                if json_match:
+                    try:
+                        json_str = json_match.group(0)
+                        json_str = self._fix_json_string(json_str)
+                        result = json.loads(json_str)
+                        # Validate it has required fields
+                        if "final" in result or "summary" in result:
+                            return result
+                    except json.JSONDecodeError:
+                        continue
+            
+            # Strategy 4: Try to construct JSON from recognizable patterns
+            constructed_json = self._construct_json_from_text(content)
+            if constructed_json:
+                return constructed_json
             
             # Fallback: create a basic structure from the content
             return {
@@ -107,8 +132,11 @@ Produce a comprehensive, well-structured final answer incorporating all feedback
     
     def _fix_json_string(self, json_str: str) -> str:
         """Fix common JSON formatting issues."""
-        # Replace unescaped quotes in string values
-        # This is a simplified fix - in production you'd want more robust parsing
+        # Remove trailing commas
+        json_str = re.sub(r',\s*}', '}', json_str)
+        json_str = re.sub(r',\s*]', ']', json_str)
+        
+        # Fix unescaped quotes in string values
         lines = json_str.split('\n')
         fixed_lines = []
         
@@ -133,6 +161,51 @@ Produce a comprehensive, well-structured final answer incorporating all feedback
             fixed_lines.append(line)
         
         return '\n'.join(fixed_lines)
+    
+    def _construct_json_from_text(self, content: str) -> Dict[str, Any]:
+        """Try to construct JSON from text patterns when parsing fails."""
+        try:
+            result = {}
+            
+            # Try to extract main content sections
+            if "# " in content or "## " in content:
+                # Looks like markdown content - use it as final
+                result["final"] = content
+            else:
+                # Try to find text that looks like an answer
+                lines = content.split('\n')
+                answer_lines = []
+                for line in lines:
+                    line = line.strip()
+                    if line and not line.startswith('{') and not line.startswith('"'):
+                        answer_lines.append(line)
+                
+                if answer_lines:
+                    result["final"] = '\n'.join(answer_lines)
+                else:
+                    result["final"] = content
+            
+            # Try to extract summary if present
+            summary_match = re.search(r'summary["\']?\s*:\s*["\']([^"\']+)', content, re.IGNORECASE)
+            if summary_match:
+                result["summary"] = summary_match.group(1)
+            else:
+                # Create a basic summary from first few sentences
+                sentences = re.split(r'[.!?]+', result.get("final", ""))
+                if sentences:
+                    result["summary"] = '. '.join(sentences[:2]).strip() + '.'
+            
+            # Set defaults for other fields
+            result.setdefault("key_points", [])
+            result.setdefault("caveats", [])
+            result.setdefault("citations", [])
+            result.setdefault("confidence", 0.6)
+            result.setdefault("metadata", {"sources_used": 0, "primary_sources": 0, "answer_completeness": "partial"})
+            
+            return result if result.get("final") else None
+            
+        except Exception:
+            return None
     
     def _get_default_prompt(self) -> str:
         """Get default prompt if file not found."""
