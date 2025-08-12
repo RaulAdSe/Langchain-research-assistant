@@ -143,6 +143,13 @@ async def run_research(
                     console.print(f"  [blue]🔄[/blue] Feedback prepared for iteration {next_iter}")
                     console.print(f"    [dim]Preview:[/dim] {feedback_preview}")
                     
+            elif event_type == "content_stagnation":
+                reason = event.get("reason", "")
+                recommendation = event.get("recommendation", "")
+                console.print(f"  [orange1]⚠[/orange1] Content stagnation detected: {reason}")
+                if verbose and recommendation:
+                    console.print(f"    [dim]Recommendation:[/dim] {recommendation}")
+                
             elif event_type == "max_iterations_reached":
                 final_quality = event.get("final_quality", 0.0)
                 max_iters = event.get("max_iterations", 0)
