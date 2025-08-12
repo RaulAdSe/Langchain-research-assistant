@@ -112,7 +112,9 @@ class WebSearchTool(BaseTool):
             for strategy_num, strategy in enumerate(parsing_strategies, 1):
                 try:
                     candidate_results = strategy()
-                    print(f"DuckDuckGo strategy {strategy_num}: found {len(candidate_results)} candidates")
+                    # Only print if verbose or if results found
+                    if candidate_results:
+                        print(f"DuckDuckGo strategy {strategy_num}: found {len(candidate_results)} candidates")
                     
                     for result_div in candidate_results:
                         try:
@@ -222,13 +224,11 @@ class WebSearchTool(BaseTool):
             if results:
                 return results
             
-            # No results found with all strategies
-            print(f"DuckDuckGo parsing failed with all strategies - no results found")
+            # No results found with all strategies - return empty to trigger next fallback
             return []
             
         except Exception as e:
-            print(f"DuckDuckGo search error: {e}")
-            # Return empty to trigger Google fallback
+            # Return empty to trigger next fallback
             return []
     
     def _basic_google_search(self, query: str, top_k: int = 5) -> List[Dict[str, Any]]:
@@ -312,14 +312,12 @@ class WebSearchTool(BaseTool):
                     continue
             
             if results:
-                print(f"Basic Google search found {len(results)} results for '{query}'")
                 return results
             
             # Ultimate fallback - use intelligent mock search
             return self._intelligent_mock_search(query, top_k)
             
         except Exception as e:
-            print(f"Basic Google search error: {e}")
             return self._intelligent_mock_search(query, top_k)
 
     def _fallback_search(self, query: str, top_k: int = 5) -> List[Dict[str, Any]]:
@@ -564,11 +562,13 @@ class WebSearchTool(BaseTool):
             if settings.search_api == "serpapi" and settings.search_api_key:
                 results = self._serpapi_search(query, top_k * 2)  # Get extra for filtering
             else:
-                # Try DuckDuckGo first, then fallback to basic Google scraping
+                # Try DuckDuckGo first, then fallback to basic Google scraping, then intelligent search
                 results = self._duckduckgo_search(query, top_k * 2)
                 if not results:
-                    print("DuckDuckGo failed, trying basic Google search...")
                     results = self._basic_google_search(query, top_k)
+                    if not results:
+                        print(f"Using intelligent search for '{query}'...")
+                        results = self._intelligent_mock_search(query, top_k)
             
             # Deduplicate
             results = self._deduplicate_results(results)

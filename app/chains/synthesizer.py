@@ -189,19 +189,29 @@ RULES
             parts.append(result["final"])
             parts.append("")
         
-        # Add caveats
-        if "caveats" in result and result["caveats"]:
+        # Check what's already included in the final text
+        final_text = result.get("final", "")
+        has_caveats = final_text and (
+            "Caveats" in final_text or 
+            "Limitations" in final_text or
+            "**Caveats and Limitations**" in final_text
+        )
+        has_sources = final_text and (
+            "Sources" in final_text or 
+            "## Sources" in final_text or 
+            "### Sources" in final_text or
+            "**Sources**" in final_text or
+            "[#1]" in final_text
+        )
+        
+        # Add caveats (only if not already present in final text)
+        if "caveats" in result and result["caveats"] and not has_caveats:
             parts.append("**Caveats and Limitations**")
             for caveat in result["caveats"]:
                 parts.append(f"- {caveat}")
             parts.append("")
         
-        # Add sources (only if not already present in final text)
-        final_text = result.get("final", "")
-        # Check if sources are already at the end of the final text
-        has_sources_at_end = final_text and ("[#" in final_text[-200:] or "Sources" in final_text[-200:])
-        
-        if "citations" in result and result["citations"] and not has_sources_at_end:
+        if "citations" in result and result["citations"] and not has_sources:
             parts.append("**Sources**")
             
             # Check if we have mock sources and add disclaimer

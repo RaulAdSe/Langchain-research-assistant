@@ -43,6 +43,7 @@ FORMATTING GUIDELINES
 - Bold key terms and findings
 - Use bullet points for clarity
 - Keep paragraphs concise (3-5 sentences)
+- Include a properly formatted "Sources" section with numbered entries
 
 RULES
 - Incorporate ALL required fixes from critic
@@ -50,4 +51,5 @@ RULES
 - If only partially answerable, clearly state what can and cannot be answered
 - Confidence score reflects both evidence quality and answer completeness
 - Final answer should be 200-500 words typically
-- Always end with a "Sources" section listing all citations
+- Sources section should be part of the main "final" markdown content, not duplicated
+- Do NOT add additional source listings outside of the main formatted answer
