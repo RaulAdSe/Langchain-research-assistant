@@ -148,12 +148,24 @@ class IterativeResearchPipeline:
                 "iteration": iteration
             }
             
+            # Check for content novelty to prevent meaningless iterations
+            content_novelty = self._assess_content_novelty(state, iteration)
+            if content_novelty["is_stagnant"]:
+                yield {
+                    "type": "content_stagnation",
+                    "reason": content_novelty["reason"],
+                    "iteration": iteration,
+                    "recommendation": content_novelty["recommendation"]
+                }
+            
             # Track iteration history
+            final_answer = state.get("final", "")
             iteration_entry = {
                 "iteration": iteration,
                 "quality_score": quality_score,
                 "findings_count": findings_count,
                 "improvements": state.get("required_fixes", []),
+                "final_answer_length": len(final_answer.split()) if final_answer else 0,
                 "timestamp": datetime.now(timezone.utc).isoformat()
             }
             state.setdefault("iteration_history", []).append(iteration_entry)
@@ -330,6 +342,83 @@ TARGET: Each iteration must genuinely improve the final answer quality.
         # Feedback creation complete - no verbose prints needed in streaming
         
         return feedback
+    
+    def _assess_content_novelty(self, state: Dict[str, Any], iteration: int) -> Dict[str, Any]:
+        """Assess if the current iteration added meaningful new content."""
+        iteration_history = state.get("iteration_history", [])
+        current_findings = state.get("findings", [])
+        current_answer = state.get("final", "")
+        
+        # Skip assessment for first iteration
+        if iteration <= 1:
+            return {"is_stagnant": False, "reason": "First iteration"}
+        
+        # Check if findings count has increased meaningfully
+        previous_iteration = iteration_history[-1] if iteration_history else {}
+        previous_findings_count = previous_iteration.get("findings_count", 0)
+        current_findings_count = len(current_findings)
+        
+        # Check for content stagnation indicators
+        stagnation_reasons = []
+        
+        # 1. No new findings added
+        if current_findings_count <= previous_findings_count:
+            stagnation_reasons.append("No new findings discovered")
+        
+        # 2. Very similar final answer length (within 5%)
+        if iteration >= 2:
+            previous_answers = [h.get("final_answer_length", 0) for h in iteration_history[-2:]]
+            current_length = len(current_answer.split())
+            
+            if previous_answers:
+                avg_previous_length = sum(previous_answers) / len(previous_answers)
+                if avg_previous_length > 0:
+                    length_change = abs(current_length - avg_previous_length) / avg_previous_length
+                    if length_change < 0.05:  # Less than 5% change
+                        stagnation_reasons.append("Answer length unchanged")
+        
+        # 3. Quality hasn't improved for 2 iterations
+        if len(iteration_history) >= 2:
+            recent_qualities = [h.get("quality_score", 0) for h in iteration_history[-2:]]
+            current_quality = state.get("quality_score", 0)
+            
+            if recent_qualities and all(q > 0 for q in recent_qualities):
+                if current_quality <= max(recent_qualities):
+                    stagnation_reasons.append("Quality not improving")
+        
+        # 4. Identical findings content (check similarity)
+        if iteration >= 2 and current_findings:
+            # Simple content similarity check
+            current_claims = set()
+            for finding in current_findings:
+                claim = finding.get("claim", "").lower()
+                if claim:
+                    # Extract key words from claim
+                    words = set(claim.split())
+                    current_claims.update(words)
+            
+            # Check if we're seeing very similar content
+            if len(current_claims) < 20:  # Very limited vocabulary suggests repetition
+                stagnation_reasons.append("Limited content diversity")
+        
+        # Determine if stagnant
+        is_stagnant = len(stagnation_reasons) >= 2  # Multiple indicators
+        
+        # Generate recommendations
+        recommendations = []
+        if "No new findings discovered" in stagnation_reasons:
+            recommendations.append("Try different search terms or approaches")
+        if "Quality not improving" in stagnation_reasons:
+            recommendations.append("Focus on synthesis improvements rather than more research")
+        if "Limited content diversity" in stagnation_reasons:
+            recommendations.append("Explore different aspects or perspectives of the topic")
+        
+        return {
+            "is_stagnant": is_stagnant,
+            "reason": "; ".join(stagnation_reasons) if stagnation_reasons else "Content progressing normally",
+            "recommendation": "; ".join(recommendations) if recommendations else "Continue iterating",
+            "indicators_count": len(stagnation_reasons)
+        }
 
 
 # Convenience function
