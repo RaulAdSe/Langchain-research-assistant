@@ -254,27 +254,41 @@ class IterativeResearchPipeline:
         # Identify weak findings that need replacement
         low_confidence_findings = [f for f in findings if f.get("confidence", 0.5) < 0.7]
         if low_confidence_findings:
-            content_gaps.append(f"Replace {len(low_confidence_findings)} low-confidence findings with stronger evidence")
-            search_recommendations.append("Target authoritative sources (.edu, .gov, major research institutions)")
+            content_gaps.append(f"Strengthen {len(low_confidence_findings)} findings with better evidence")
+            search_recommendations.append("Search for more specific data and expert analysis")
         
-        # Check for authoritative sources
-        has_edu_gov = any(".edu" in str(f.get("source", {}).get("url", "")) or 
-                          ".gov" in str(f.get("source", {}).get("url", "")) 
-                          for f in findings)
-        if not has_edu_gov:
-            content_gaps.append("Missing academic or government sources for credibility")
-            search_recommendations.append("Include 'site:edu OR site:gov' in searches")
+        # Check for authoritative source types (based on what we can actually provide)
+        authoritative_sources = ["Nature", "IEEE", "Science", "EPA", "IEA", "IRENA", "Academic", "Government"]
+        has_authoritative = any(
+            any(auth in str(f.get("source", "")) for auth in authoritative_sources)
+            for f in findings
+        )
+        if not has_authoritative:
+            content_gaps.append("Lacks authoritative institutional sources for credibility")
+            search_recommendations.append("Search for institutional and research organization data")
         
-        # Generate targeted search recommendations based on question type
+        # Generate content-focused improvements based on question type and current answer
         question = state.get("question", "")
         if "what" in question.lower():
-            search_recommendations.append("Search for comprehensive definitions and explanations")
+            search_recommendations.append("Find more detailed definitions and comprehensive explanations")
         if "how" in question.lower():
-            search_recommendations.append("Find step-by-step processes and methodologies")
+            search_recommendations.append("Search for step-by-step processes and practical methods")
         if "why" in question.lower():
-            search_recommendations.append("Look for causal explanations and reasoning")
+            search_recommendations.append("Look for causal relationships and underlying mechanisms")
         if "benefit" in question.lower() or "advantage" in question.lower():
-            search_recommendations.append("Find specific examples and case studies")
+            search_recommendations.append("Find quantitative data and specific real-world examples")
+        if "compare" in question.lower() or "vs" in question.lower() or "versus" in question.lower():
+            search_recommendations.append("Search for side-by-side comparisons and contrasting data")
+        
+        # Content quality improvements
+        if final_answer and len(final_answer.split()) < 200:
+            answer_improvements.append("Answer needs more depth and detail")
+            search_recommendations.append("Find additional context and background information")
+        
+        # Check for balanced perspective
+        if final_answer and not any(word in final_answer.lower() for word in ["however", "although", "but", "despite", "challenge", "limitation"]):
+            answer_improvements.append("Lacks balanced perspective - needs challenges/limitations")
+            search_recommendations.append("Search for potential drawbacks, challenges, and counterarguments")
         
         # Use critic's specific feedback
         critic_issues = []
