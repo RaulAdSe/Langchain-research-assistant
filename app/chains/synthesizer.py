@@ -43,92 +43,100 @@ Produce a comprehensive, well-structured final answer incorporating all feedback
     
     def _parse_json_output(self, raw_output) -> Dict[str, Any]:
         """Parse JSON output with robust error handling."""
+        # Extract content from AIMessage or string
+        if hasattr(raw_output, 'content'):
+            content = raw_output.content
+        elif hasattr(raw_output, 'text'):
+            content = raw_output.text
+        else:
+            content = str(raw_output)
+        
+        # Handle empty content
+        if not content or content.strip() == "":
+            return self._create_fallback_response("Empty content received from LLM")
+        
+        # Try direct JSON parsing first (silently)
         try:
-            # Extract content from AIMessage or string
-            if hasattr(raw_output, 'content'):
-                content = raw_output.content
-            elif hasattr(raw_output, 'text'):
-                content = raw_output.text
-            else:
-                content = str(raw_output)
-            
-            # Handle empty content
-            if not content or content.strip() == "":
-                print("Warning: Empty content received from LLM")
-                raise json.JSONDecodeError("Empty content", "", 0)
-            
             return json.loads(content)
-        except json.JSONDecodeError as e:
-            print(f"JSON parse error: {e}")
-            print(f"Raw output (first 1000 chars): {content[:1000]}")
-            print(f"Raw output type: {type(raw_output)}")
+        except json.JSONDecodeError:
+            # Content might be in markdown code blocks - continue to fallback strategies
+            pass
             
-            # Strategy 1: Extract JSON from markdown code blocks (improved patterns)
-            patterns = [
-                r'```(?:json)?\s*(\{.*?\})\s*```',  # Standard markdown
-                r'```(?:json)?\s*(\{[\s\S]*?\})\s*```',  # With newlines
-                r'```\s*(\{[\s\S]*?\})\s*```',  # Without json label
-                r'`(\{[\s\S]*?\})`',  # Single backticks
-            ]
-            
-            for pattern in patterns:
-                json_match = re.search(pattern, content, re.DOTALL | re.MULTILINE)
-                if json_match:
-                    try:
-                        json_content = json_match.group(1).strip()
-                        # Try to fix common issues
-                        json_content = self._fix_json_string(json_content)
-                        return json.loads(json_content)
-                    except json.JSONDecodeError as e2:
-                        continue
-            
-            # Strategy 2: Find JSON between first { and last } (improved)
-            start_idx = content.find('{')
-            end_idx = content.rfind('}')
-            if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+        # If direct parsing failed, try extraction strategies
+        # Strategy 1: Extract JSON from markdown code blocks (improved patterns)
+        patterns = [
+            r'```(?:json)?\s*(\{.*?\})\s*```',  # Standard markdown
+            r'```(?:json)?\s*(\{[\s\S]*?\})\s*```',  # With newlines
+            r'```\s*(\{[\s\S]*?\})\s*```',  # Without json label
+            r'`(\{[\s\S]*?\})`',  # Single backticks
+        ]
+        
+        for pattern in patterns:
+            json_match = re.search(pattern, content, re.DOTALL | re.MULTILINE)
+            if json_match:
                 try:
-                    json_content = content[start_idx:end_idx+1]
-                    # Clean up potential formatting issues
+                    json_content = json_match.group(1).strip()
+                    # Try to fix common issues
                     json_content = self._fix_json_string(json_content)
                     return json.loads(json_content)
-                except json.JSONDecodeError as e3:
-                    pass
-            
-            # Strategy 3: Look for JSON-like structure with specific fields
-            field_patterns = [
-                r'\{[^{}]*?"final"[^{}]*?\}',
-                r'\{[\s\S]*?"final"[\s\S]*?\}',
-                r'\{[\s\S]*?"summary"[\s\S]*?\}',
-            ]
-            
-            for pattern in field_patterns:
-                json_match = re.search(pattern, content, re.DOTALL)
-                if json_match:
-                    try:
-                        json_str = json_match.group(0)
-                        json_str = self._fix_json_string(json_str)
-                        result = json.loads(json_str)
-                        # Validate it has required fields
-                        if "final" in result or "summary" in result:
-                            return result
-                    except json.JSONDecodeError:
-                        continue
-            
-            # Strategy 4: Try to construct JSON from recognizable patterns
-            constructed_json = self._construct_json_from_text(content)
-            if constructed_json:
-                return constructed_json
-            
-            # Fallback: create a basic structure from the content
-            return {
-                "final": content,
-                "summary": "Error parsing structured output",
-                "key_points": [],
-                "caveats": [],
-                "citations": [],
-                "confidence": 0.5,
-                "metadata": {"sources_used": 0, "primary_sources": 0, "answer_completeness": "partial"}
-            }
+                except json.JSONDecodeError as e2:
+                    continue
+        
+        # Strategy 2: Find JSON between first { and last } (improved)
+        start_idx = content.find('{')
+        end_idx = content.rfind('}')
+        if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+            try:
+                json_content = content[start_idx:end_idx+1]
+                # Clean up potential formatting issues
+                json_content = self._fix_json_string(json_content)
+                return json.loads(json_content)
+            except json.JSONDecodeError as e3:
+                pass
+        
+        # Strategy 3: Look for JSON-like structure with specific fields
+        field_patterns = [
+            r'\{[^{}]*?"final"[^{}]*?\}',
+            r'\{[\s\S]*?"final"[\s\S]*?\}',
+            r'\{[\s\S]*?"summary"[\s\S]*?\}',
+        ]
+        
+        for pattern in field_patterns:
+            json_match = re.search(pattern, content, re.DOTALL)
+            if json_match:
+                try:
+                    json_str = json_match.group(0)
+                    json_str = self._fix_json_string(json_str)
+                    result = json.loads(json_str)
+                    # Validate it has required fields
+                    if "final" in result or "summary" in result:
+                        return result
+                except json.JSONDecodeError:
+                    continue
+        
+        # Strategy 4: Try to construct JSON from recognizable patterns
+        constructed_json = self._construct_json_from_text(content)
+        if constructed_json:
+            return constructed_json
+        
+        # All strategies failed - return fallback without detailed error message
+        return self._create_fallback_response("All parsing strategies failed", content)
+    
+    def _create_fallback_response(self, error_reason: str, content: str = "") -> Dict[str, Any]:
+        """Create a fallback response when JSON parsing fails completely."""
+        # Only print error if this is genuinely a complete parsing failure
+        print(f"⚠ SYNTHESIZER: {error_reason} - using fallback structure")
+        
+        # Fallback: create a basic structure from the content
+        return {
+            "final": content if content else "Unable to generate structured output",
+            "summary": "Error parsing structured output",
+            "key_points": [],
+            "caveats": [],
+            "citations": [],
+            "confidence": 0.5,
+            "metadata": {"sources_used": 0, "primary_sources": 0, "answer_completeness": "partial"}
+        }
     
     def _fix_json_string(self, json_str: str) -> str:
         """Fix common JSON formatting issues."""
